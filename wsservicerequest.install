@@ -1,0 +1,388 @@
+<?php
+
+/**
+ * @file
+ * WS Service Request module install file.
+ */
+
+/**
+ * Implementation of hook_schema().
+ *
+ * Inserts the WS Service Request module's schema in the SQL database.
+ */
+
+function wsservicerequest_enable(){
+    add_wssr_menus(); 
+    module_load_include('inc', 'block', 'block.admin');
+	wssr_updateblock(); 
+	drupal_flush_all_caches();  
+}
+
+function wsservicerequest_disable(){
+	drupal_flush_all_caches();
+	menu_cache_clear_all();
+	db_query("DELETE FROM `menu_links` WHERE `menu_name`='menu-createsr'");
+}
+
+   function add_wssr_menus () 
+  {
+     drupal_flush_all_caches();
+     menu_rebuild();
+    $menusr_name='menu-createsr';
+
+   create_menu($menusr_name, 'Tenant Services', 'Tenant Services');
+
+   $item = array(
+    'link_title' => t('Service request'),
+    'link_path' => 'wsservicerequest/create/standard',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+    'weight' => 1
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('Invite guest'),
+    'link_path' => 'wsservicerequest/create/visitor',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 2
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('Request overtime HVAC'),
+    'link_path' => 'wsservicerequest/create/hvac',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 3
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('Shared Resource'),
+    'link_path' => 'wsservicerequest/create/shared',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 4
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('My requests'),
+    'link_path' => 'wsservicerequest/review',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 5
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('All requests'),
+    'link_path' => 'wsservicerequest/review/all',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 6
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('My visitors'),
+    'link_path' => 'wsservicerequest/review_visitors',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 7
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('All scheduled visitors'),
+    'link_path' => 'wsservicerequest/review_visitors/all',
+    'menu_name' => $menusr_name,
+    'plid' => 0,
+   'weight' => 8
+  );
+  menu_link_save($item);
+
+
+  $item = array(
+    'link_title' => t('Configure SR forms appearance'),
+    'link_path' => 'wsservicerequest/manage',
+    'menu_name' => 'menu-management',
+    'plid' => 0,
+    'hidden' => 1,
+  );
+  menu_link_save($item);
+   $item = array(
+    'link_title' => t('Manage SR settings'),
+    'link_path' => 'wsservicerequest/managesettings',
+    'menu_name' => 'menu-management',
+    'plid' => 0,
+    'hidden' => 1,
+  );
+  menu_link_save($item);
+
+
+  $admin_perm=array('configure wsservicerequest');
+  $tenant_perm=array('create wsservicerequest');
+  $pm_perm=array('create wsservicerequest','configure wsservicerequest');
+
+  //drupal_flush_all_caches();
+  
+  ws_grant_permissions('Workspeed PM Role', $pm_perm);
+  ws_grant_permissions('Workspeed Tenant Role', $tenant_perm);
+  ws_grant_permissions('Workspeed Support Role', $admin_perm);
+  ws_grant_permissions('Workspeed Admin Role', $admin_perm);
+
+  menu_rebuild();
+  drupal_flush_all_caches();  
+
+  }
+  
+  function create_menu($menu_name, $menu_title, $description) {
+  $return_mlid = 0;
+  menu_rebuild();
+  
+  // insert into the menu_custom database
+  if(!db_result(db_query("SELECT * FROM {menu_custom} WHERE menu_name = '%s'", $menu_name))) {
+    db_query("INSERT INTO {menu_custom} (menu_name, title, description) VALUES ('%s', '%s', '%s')", $menu_name, $menu_title, $description);
+  } else {
+    db_query("UPDATE {menu_custom} SET title = '%s', description = '%s' WHERE menu_name = '%s'", $menu_title, $description, $menu_name);
+  }
+  
+  // modified code from menu_enable
+  $base_link = db_fetch_array(db_query("SELECT mlid AS plid, menu_name from {menu_links} WHERE link_path = 'admin/build/menu' AND module = 'system'"));
+  $base_link['router_path'] = 'admin/build/menu-customize/%';
+  $base_link['module'] = 'menu';
+  $link = $base_link;
+  $link['mlid'] = 0;
+  $link['link_title'] = $menu_title;
+  $link['link_path'] = 'admin/build/menu-customize/'. $menu_name;
+  $link['module'] = 'alimag';
+  $link['customized'] = 1;
+  if (!db_result(db_query("SELECT mlid FROM {menu_links} WHERE link_path = '%s' AND plid = %d", $link['link_path'], $link['plid']))) {
+    $return_mlid = menu_link_save($link);
+  }
+  
+  return $return_mlid;  
+}
+function ws_permissions_get_role($role_name) {
+  $role = db_fetch_object(db_query("SELECT * FROM {role} r WHERE r.name = '%s'", $role_name));
+  return $role;
+}
+function ws_grant_permissions($role_name, $new_permissions=array()) {
+  $permissions = array();
+  $updated_permissions = '';
+  $role = ws_permissions_get_role($role_name);
+  if($role->rid > 0) {
+    if (count($new_permissions) > 0) {
+      // Fetch the permissions string for the given role id
+      $permissions = ws_get_permissions_for_role($role->name);
+      // Cross reference new permissions with those appropriate to the modules on the site.
+      $defined_permissions = module_invoke_all('perm');
+      $new_permissions = array_intersect($new_permissions, $defined_permissions);
+      if(count($new_permissions) > 0) {
+        // Check to see if there are existing permissions
+        if(count($permissions) > 0) {
+          // Add the new permissions if the role doesn't already have the permission
+          foreach($new_permissions as $permission) {
+            if(! in_array($permission, $permissions)) {
+              $permissions[] = trim($permission);
+            }
+          }
+    
+          // rebuild the permission string
+          $updated_permissions = join(', ', $permissions);
+          db_query("UPDATE {permission} SET perm = '%s' WHERE rid = %d", $updated_permissions, $role->rid);
+          return true;
+        }
+        else {
+          // No permissions have been set for this role, so we need to insert some
+          foreach($new_permissions as $permission){
+            $permissions[] = trim($permission);
+          }
+          // rebuild the permission string
+          $updated_permissions = join(', ', $permissions);
+          db_query("INSERT INTO {permission} (rid, perm, tid) VALUES(%d,'%s',%d)",$role->rid,$updated_permissions,0);       
+          return true;
+        }
+      }
+      return false;     
+    }
+    return false;
+  }
+  return false;
+}  
+function ws_get_permissions_for_role($role_name){
+  $role = ws_permissions_get_role($role_name);
+  $permissions = array();
+  if($role->rid > 0){
+    $perm_string = db_result(db_query("SELECT perm FROM {permission} WHERE rid = %d", $role->rid));
+    if (strlen($perm_string) > 0) {
+      $permissions = explode(',', $perm_string);
+      foreach($permissions as $index => $perm){
+        $permissions[$index] = trim($perm);
+      }
+    }
+  }
+  return $permissions;  
+}
+
+ 
+function wsformsconfig_schema() {
+	$schema['ws_field_params'] = array
+    (
+		'module' => 'wsgeneral',
+		'fields' => array
+    	(
+			'form_name' => array
+    		(
+				'type' => 'varchar',
+				'size' => 'normal',
+				'length' => 100,
+    			'not null' => TRUE
+			),
+			'field' => array
+    		(
+				'type' => 'varchar',
+				'size' => 'normal',
+				'length' => 100,
+    			'not null' => TRUE
+			),
+			'param' => array
+    		(
+				'type' => 'varchar',
+				'size' => 'normal',
+				'length' => 100,
+    			'not null' => TRUE
+			),
+			'value' => array
+    		(
+				'type' => 'text',
+				'size' => 'normal',
+    			'not null' => TRUE
+			)
+    	),
+		'unique keys' => array('name_field_param'=>array('form_name','field','param')),
+    	'mysql_suffix' => 'ENGINE=MyISAM'
+    );
+    $schema['ws_cache'] = array
+    (
+		'module' => 'wsgeneral',
+		'fields' => array
+    	(
+			'property_id' => array
+    		(
+				'type' => 'int',
+				'size' => 'normal',
+				'length' => 11,
+    			'not null' => TRUE,
+				'default' => '0'
+			),
+			'ws_user_id' => array
+    		(
+				'type' => 'int',
+				'size' => 'normal',
+				'length' => 11,
+    			'not null' => TRUE,
+				'default' => '0'
+			),
+			'entity_id' => array
+    		(
+				'type' => 'int',
+				'size' => 'normal',
+				'length' => 11,
+    			'not null' => TRUE,
+				'default' => '0'
+			),
+			'cache_value' => array
+    		(
+				'type' => 'blob',
+				'size' => 'big'
+			),
+			'cache_key' => array
+    		(
+				'type' => 'varchar',
+				'size' => 'normal',
+				'length' => 127,
+    			'not null' => TRUE,
+				'default' => ''
+			),
+			'expire' => array
+    		(
+				'type' => 'int',
+				'size' => 'normal',
+				'length' => 11,
+				'default' => '0'
+			),
+			'created' => array
+    		(
+				'type' => 'int',
+				'size' => 'normal',
+				'length' => 11,
+				'default' => '0'
+			)
+    	),
+		'primary key' => array('property_id','ws_user_id','entity_id','cache_key'),
+    	'indexes' => array
+    	(
+    		'entity_id' => array('entity_id'),
+			'property_id' => array('property_id'),
+    		'ws_user_id' => array('ws_user_id')
+		),
+    	'mysql_suffix' => 'ENGINE=MyISAM'
+    );
+    
+  return $schema;
+}
+
+/**
+ * Implementation of hook_install().
+ *
+ * Installs the announcement module.
+ */
+function wsservicerequest_install()
+{
+//	need to detect if tables present during module installation  	
+//	if (!db_table_exists('ws_cache') || !db_table_exists('ws_field_params'))
+//	{
+  $ret = drupal_install_schema('wsformsconfig');
+		if (!$ret[0]['success'])
+		{
+			drupal_set_message(t('Table installation for the WS Service Requests module was unsuccessful.'), 'error');
+		}
+//	}
+
+	if (!db_column_exists('ws_styles', 'package'))
+	{
+	db_query("alter table ws_styles add column package varchar(50) default 'confstyle'");
+		db_query("UPDATE ws_styles SET package='confstyle'");
+	}
+
+    //run styles update for live portals
+    wsc_inherit_wssr( array('inherit_wssr' => 1) );
+
+  //add_wssr_menus();
+}
+
+/**
+ * Implementation of hook_uninstall().
+ *
+ * Remove the variables, nodes and schema corresponding to the FAQ module.
+ */
+function wsservicerequest_uninstall() {
+//  drupal_uninstall_schema('wsservicerequest');
+  
+  
+  // Remove the variables.
+  variable_del('wsservicerequest_block_max_list_count');
+  variable_del('wsservicerequest_per_page');
+  variable_del('wsservicerequest_display_classification');
+  variable_del('wsservicerequest_display');
+  variable_del('wsservicerequest_interval');
+}
+function wssr_updateblock() 
+{
+	$dbq="insert into blocks_roles(module,delta,rid) select 'menu', 'menu-createsr', r.rid ".
+		" from role r where ".
+		" r.name in ('Workspeed PM Role', 'Workspeed Tenant Role') ";
+	db_query($dbq);
+	global $theme_key;
+	init_theme();
+	block_admin_display();
+	$dbq="update blocks set pages='<front>' WHERE module = 'menu' and delta='menu-createsr'";
+	db_query($dbq);
+}

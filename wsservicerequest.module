@@ -1,0 +1,404 @@
+<?php
+    //include_once('xml_core.php');
+    include_once('forms.php');
+
+function wssr_get_sr_types(){
+	$sr_types_map = array(	'standard' => array('path'=>'standard'), 
+							'visitor' => array('path'=>'visitor'), 
+							'hvac' => array('path'=>'hvac'),
+                            'shared' => array('path'=>'shared'),
+	);	
+	return $sr_types_map;
+}
+	
+function _wsservicerequest_drupaldate2unixtime($time){
+    /*
+     * ToDo: !!!!!!!!!!!!!!!!!!!!!!!!!!!!!Fake function, change to real!!!!!!!!!!!!!!!!!!!!!!!!!!
+     */
+    return time();
+}
+
+/**
+ * Implementation of hook_perm().
+ *
+ * This function supplies the permissions that the announcement module defines.
+ * These can then be selected on the Drupal user permissions administration page
+ * and used to restrict access to actions the announcement module performs.
+ *
+ * @return
+ *   An array of strings used to identify permissible actions.
+ *
+ * More detail at @link http://api.drupal.org/api/HEAD/function/hook_perm API page @endlink .
+ */
+function wsservicerequest_perm()
+{
+	return array('create wsservicerequest', 'configure wsservicerequest');
+	//'access wsservicerequest',
+}
+
+/**
+ * Implementation of hook_menu().
+ *
+ * This function allows the announcement module to register URL paths and 
+ * determine how these requests are to be handled. Depending on the 
+ * registration a link may be placed in a menu or as a tab at the top of
+ * the page.
+ *
+ * @return
+ *   An array of registered URL path objects. These contain at least the
+ *   registered URL path, a string of text used as a title for these paths,
+ *   an access flag built by testing the access list, a type to determine
+ *   how this registration be used, and the name of the callback function
+ *   that should be called when this URL path is requested.
+ *
+ * More detail at @link http://api.drupal.org/api/HEAD/function/hook_menu API page @endlink .
+ */
+function wsservicerequest_menu()
+{
+	//get_sr_info($filter)
+	$items=array();
+	
+	$items['admin/settings/wsservicerequest']=array(
+		'title'=>'WS Service Requests',
+		'page arguments'=>array('wsservicerequest_settings'),
+		'page callback'=>'drupal_get_form',
+		'access callback'=>'user_access',
+		'access arguments'=>array('configure wsservicerequest'),
+		'type'=>MENU_CALLBACK
+		);
+	/*
+	$items['wsservicerequest']=array(
+		'title'=>'Tenant Services',
+		'page arguments' => array(1, 2),
+        'page callback'=>'wsservicerequest_form',
+		'access callback'=>'user_access',
+		'access arguments'=>array('create wsservicerequest'),
+		'type'=>MENU_CALLBACK
+		);
+	*/
+	//$sr_types=wssr_get_sr_types();
+	//foreach($sr_types as $srtype=>$srtypeInfo) {
+		//if (!empty($srtypeInfo['path'])) {
+			//$items['wsservicerequest/create/'.$srtypeInfo['path']]=array(
+			$items['wsservicerequest/create/%']=array(
+				'title'=>'Tenant Services',
+				'page arguments' => array(2, 3),
+				'page callback'=>'wsservicerequest_form',
+				'access callback'=>'create_sr_access',
+				//'access callback'=>'user_access',
+				'access arguments'=>array('create wsservicerequest', 2),
+				//'access arguments'=>array('create wsservicerequest', $srtypeInfo['path']),
+				'type'=>MENU_CALLBACK
+				);
+		//}
+	//}
+    $items['wsservicerequest/admin/form/global']=array(
+		'title'=>'SR Form Administer',
+		'page callback'=>'drupal_get_form',
+        'page arguments' => array('wssr_admin_global_form'),
+		'access callback'=>'user_access',
+        'access arguments'=>array('configure wsservicerequest'),
+		'type'=>MENU_CALLBACK
+        );
+
+    $items['wsservicerequest/admin/form/%']=array(
+		'title'=>'SR Form Administer',
+		'page callback'=>'wssr_form_admin',
+        'page arguments' => array(3),
+		'access callback'=>'user_access',
+		'access arguments'=>array('configure wsservicerequest'),
+		'type'=>MENU_CALLBACK
+		);
+
+    $items['wsservicerequest/manage']=array(
+		'title'=>'SR Forms Management',
+		'page callback'=>'wssr_management',
+		'access callback'=>'user_access',
+		'access arguments'=>array('configure wsservicerequest'),
+		'type'=>MENU_CALLBACK
+		);
+
+    $items['wsservicerequest/ajax/category_control/%']=array(
+        'title'=>'SR Form Administer',
+        'page callback'=>'wssr_update_categories_control',
+        'page arguments' => array(3),
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/managesettings']=array(
+		'title'=>'SR Forms Management',
+		'page callback'=>'drupal_get_form',
+        'page arguments' => array('wssr_manage_settings_form'),
+		'access callback'=>'user_access',
+		'access arguments'=>array('configure wsservicerequest'),
+		'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/review']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review',
+        'page arguments' => array('my'), //all or my(default)
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+    $items['wsservicerequest/review/my']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review',
+        'page arguments' => array('my'), //all or my(default)
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+    $items['wsservicerequest/review/all']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review',
+        'page arguments' => array('all'), //all or my(default)
+        'access callback'=>'create_sr_access',
+        'access arguments'=>array('create wsservicerequest','all_requests'),
+        'type'=>MENU_CALLBACK
+    );
+    /*$items['wsservicerequest/review/all']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review',
+        'page arguments' => array('all'),
+        'access callback'=>'user_access',
+        'access arguments'=>array(''),
+        'type'=>MENU_CALLBACK
+    );*/
+    $items['wsservicerequest/ajax/sr_view']=array(
+        'title'=>'',
+        'page callback'=>'wssr_view_created_sr',
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/review/single/%']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review_single',
+        'page arguments' => array(3),
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/review/single_visitor/%']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review_single_visitor',
+        'page arguments' => array(3),
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/review_visitors']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review_visitors',
+        'page arguments' => array('my'), //all or my(default)
+        'access callback'=>'create_sr_access',
+        'access arguments'=>array('create wsservicerequest','my_visitors'),
+        'type'=>MENU_CALLBACK
+    );
+    $items['wsservicerequest/review_visitors/my']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review_visitors',
+        'page arguments' => array('my'), //all or my(default)
+        'access callback'=>'create_sr_access',
+        'access arguments'=>array('create wsservicerequest','my_visitors'),
+        'type'=>MENU_CALLBACK
+    );
+    $items['wsservicerequest/review_visitors/all']=array(
+        'title'=>'SR Review',
+        'page callback'=>'wssr_review_visitors',
+        'page arguments' => array('all'), //all or my(default)
+        'access callback'=>'create_sr_access',
+        'access arguments'=>array('create wsservicerequest','all_visitors'),
+        'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/ajax/sr_view_visitors']=array(
+        'title'=>'',
+        'page callback'=>'wssr_view_created_sr_visitors',
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+
+	$items['wsservicerequest/getdocument/%']=array(
+			'title'=>'Documents',
+			'page arguments'=>array('wsattachment',null,2),
+			'page callback'=>'getwsdocument',
+			'access callback'=>'user_access',
+			'access arguments'=>array('create wsservicerequest'),
+			'type'=>MENU_CALLBACK
+			);
+	$items['wsservicerequest/getparticipantimage/%/%']=array(
+			'title'=>'Documents',
+			'page arguments'=>array(2,3),
+			'page callback'=>'get_participant_image',
+			'access callback'=>'user_access',
+			'access arguments'=>array('create wsservicerequest'),
+			'type'=>MENU_CALLBACK
+			);
+
+    $items['wsservicerequest/generate/visitor']=array(
+		'title'=>'Visitor requests generator',
+		'page callback'=>'drupal_get_form',
+        'page arguments' => array('wssr_visitor_generator'),
+		'access callback'=>'user_access',
+		'access arguments'=>array('create wsservicerequest'),
+		'type'=>MENU_CALLBACK
+    );
+
+    $items['wsservicerequest/ajax/shared_calendar/%/%']=array(
+        'title'=>'',
+        'page callback'=>'wssr_shared_calendar',
+        'page arguments' => array(3,4),
+        'access callback'=>'user_access',
+        'access arguments'=>array('create wsservicerequest'),
+        'type'=>MENU_CALLBACK
+    );
+    
+    // @karp: maybe we have to split 'wsservicerequest/review' into
+    //        'wsservicerequest/review/all' and 'wsservicerequest/review/my'
+	return $items;
+}
+
+/*
+ * Registering themable SR forms here
+ */
+function wsservicerequest_theme()
+{
+  return array
+  (
+    'wssr_sample_form' => array('arguments' => array('form' => NULL)),
+    'wssr_standard_form' => array('arguments' => array('form' => NULL)),
+    'wssr_visitor_form' => array('arguments' => array('form' => NULL)),
+  	'wssr_hvac_form' => array('arguments' => array('form' => NULL)),
+    'wssr_shared_form' => array('arguments' => array('form' => NULL)),
+
+    //non-form theming
+    'review_single' => array('template' => 'review_single', 'arguments' => array('sr' => NULL)),
+    'review_single_visitor' => array('template' => 'review_single_visitor', 'arguments' => array('visitor' => NULL)),
+  );
+}
+
+/**
+ * Implementation of hook_init().
+ */
+function wsservicerequest_init()
+{
+    general_add_css('datepicker/jquery.datepick.css');
+    general_add_css('popup_layer/popup_layer.css');
+	
+	drupal_add_css(drupal_get_path('module','wsservicerequest').'/wsservicerequest.css');
+    ws_add_portal_css('wsservicerequest.css');
+}
+
+/**
+ * Implementation of hook_settings().
+ *
+ * This function provides an administrative interface for controlling 
+ * various settings for the announcement module.
+ *
+ * NOTE: This hook is not used in Drupal v5 - converted to regular form.
+ * (@link http://drupal.org/node/64279#hook-settings http://drupal.org/node/64279#hook-settings @endlink .)
+ *
+ * @return
+ *   An array description, in the Drupal Forms API format, of the elements
+ *   to render the settings interface.
+ *
+ * More detail at @link http://api.drupal.org/api/4.7/function/hook_settings API page @endlink .
+ */
+function wsservicerequest_settings()
+{
+	global $user;
+	$form=array();
+	
+	$form['enable_tenant_services_page']=array('#type'=>'checkbox','#title'=>t('Enable tenant services page: '),'#default_value'=>variable_get('enable_tenant_services_page',TRUE),'#description'=>t('If this option is selected, the create service request page will be activated.'),'#required'=>FALSE);
+	
+	$form['page_name']=array('#type'=>'textfield','#title'=>t('Page name'),'#default_value'=>variable_get('page_name',TRUE),'#description'=>t('Page name.'),'#required'=>FALSE,'#weight'=>-20);
+	
+	$form['enable_service_request']=array('#type'=>'checkbox','#title'=>t('Service request:'),'#default_value'=>variable_get('enable_service_request',TRUE),'#required'=>FALSE);
+
+	$form['enable_visitor_request']=array('#type'=>'checkbox','#title'=>t('Visitor:'),'#default_value'=>variable_get('enable_visitor_request',TRUE), '#required'=>FALSE);
+
+	$form['enable_hvac_overtime']=array('#type'=>'checkbox','#title'=>t('HVAC Overtime:'),'#default_value'=>variable_get('enable_hvac_overtime',TRUE),'#required'=>FALSE);
+
+	$form['buttons']['submit'] = array('#type' => 'submit', '#value' => t('Save configuration') );
+	$form['buttons']['reset'] = array('#type' => 'submit', '#value' => t('Reset to defaults') );
+	$form['#submit'][]='wsservicerequest_settings_submit';
+
+	return system_settings_form($form);
+}
+
+/**
+ * This function is called to retrieve the form that is displayed when one attempts 
+ * to "create" an service request.
+ **/
+function wsservicerequest_form($form_id, $propertyId)
+{
+	//@karp: it's better to avoid such type global settungs
+    //global $current_sr_form;
+    $form_name = 'wssr_'.$form_id.'_form';
+    //$current_sr_form = $form_name;
+    return drupal_get_form($form_name);
+}
+
+//Manager's form
+function wssr_manage_settings_form(&$form_state){
+    $form = array();
+    $form['time_step'] = array('#type'=>'select','#title'=>'Timepicker step','#options'=>array('15'=>'15', '30'=>'30'), '#default_value' => variable_get('int__time_picker_minute_interval', '30'));
+    /* Cache lifetime settings
+    $form['cache_lifetime'] = array('#type'=>'select','#title'=>'Cache lifetime','#options'=>array('0'=>'Do not use cache', '86400'=>'1 day', '604800'=>'1 week', '2592000'=>'1 month', '-1'=>'Never expires'), '#default_value' => variable_get('ws_cache_lifetime', '86400'));
+    */
+    $form['flush_cache'] = array('#type'=>'checkbox', '#title'=>'Flush SR cache', '#default_value'=>0);
+
+    /*SR History*/
+    //$form['pager_size'] = array('#type'=>'select','#title'=>'Items per page','#options'=>array('15'=>'15', '30'=>'30', '45'=>'45'), '#default_value' => variable_get('srhistory_items_per_page', '25'));
+
+    $form['submit']=array('#type'=>'submit','#value'=>'Submit');
+
+    return $form;
+}
+
+function wssr_manage_settings_form_submit($form, &$form_state){
+    $data = $form_state['values'];
+    if($data['flush_cache'] /*|| ($data['cache_lifetime'] !== variable_get('ws_cache_lifetime', '-1'))*/){
+        wssr_cache_clear();
+    }
+    variable_set('int__time_picker_minute_interval', $data['time_step']);
+    variable_set('srhistory_items_per_page', $data['pager_size']);
+    /*variable_set('ws_cache_lifetime', $data['cache_lifetime']);*/
+	}   
+function create_sr_access($attr,$form_id) {
+    global $user;
+    if($user->uid==1)
+        return true;
+
+	if(!user_access($attr))
+		return false;
+	$srInfo=get_sr_info(null);
+	if (empty($srInfo))
+		return false;
+	return $srInfo[$form_id] ? $srInfo[$form_id] : false;
+}
+
+/*
+ * Clears ws_documents_cache table and files/wsdocuments folder
+ */
+function wssr_cache_clear(){
+    db_query('TRUNCATE TABLE {ws_cache}');
+    db_query("TRUNCATE TABLE {ws_documents_cache}");
+
+    $directory = file_directory_path().'/'.'wsdocuments'.'/';
+    $dir = opendir($directory);
+
+    //empty folder's top. If we need to advance through subfolders - make this recursively.
+    while(($file = readdir($dir)))
+    if ( is_file ($directory."/".$file))
+        unlink ($directory."/".$file);
+}
